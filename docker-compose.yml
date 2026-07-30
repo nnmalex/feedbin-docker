@@ -1,0 +1,210 @@
+# Feedbin self-hosted stack.
+#
+# Feedbin itself (web, workers, clock) and the extract service are built
+# locally from source. Everything else uses upstream open-source images.
+#
+# All Feedbin processes share `hostname: feedbin`: Feedbin routes Sidekiq jobs
+# to hostname-derived queues (crawl_<hostname>, parse_<hostname>, ...), so the
+# enqueuing web process and the Sidekiq workers must agree on the hostname.
+
+x-feedbin-env: &feedbin-env
+  RAILS_ENV: production
+  RACK_ENV: production
+  SECRET_KEY_BASE: ${SECRET_KEY_BASE:?Set SECRET_KEY_BASE in .env (openssl rand -hex 64)}
+  DATABASE_URL: postgres://feedbin:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/feedbin
+  REDIS_URL: redis://redis:6379/0
+  REDIS_URL_CACHE: redis://redis:6379/1
+  REDIS_URL_PUBLIC_IDS: redis://redis:6379/2
+  ELASTICSEARCH_URL: http://elasticsearch:9200
+  # Public identity. TLS terminates at Cloudflare's edge; cloudflared forwards
+  # X-Forwarded-Proto so FORCE_SSL is safe to keep on.
+  FEEDBIN_HOST: ${FEEDBIN_HOST:?Set FEEDBIN_HOST in .env}
+  FEEDBIN_URL: https://${FEEDBIN_HOST}
+  DEFAULT_URL_OPTIONS_HOST: ${FEEDBIN_HOST}
+  PUSH_URL: https://${FEEDBIN_HOST}
+  FORCE_SSL: "true"
+  RAILS_SERVE_STATIC_FILES: "true"
+  RAILS_LOG_TO_STDOUT: "true"
+  # S3-compatible storage via MinIO (favicons, entry images, newsletters).
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-feedbin}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+  AWS_S3_BUCKET: feedbin
+  AWS_S3_REGION: us-east-1
+  AWS_S3_ENDPOINT: http://minio:9000
+  AWS_S3_PATH_STYLE: "true"
+  # Image proxy (go-camo, camo-compatible). Needs its own public hostname
+  # routed through the tunnel. Leave CAMO_HOST empty to disable proxying.
+  CAMO_HOST: ${CAMO_HOST:-}
+  CAMO_KEY: ${CAMO_KEY:-}
+  # Full-content extraction service (internal only).
+  EXTRACT_HOST: extract:3000
+  EXTRACT_USER: ${EXTRACT_USER:-feedbin}
+  EXTRACT_SECRET: ${EXTRACT_SECRET:-}
+
+x-feedbin-service: &feedbin-service
+  build:
+    context: ./feedbin
+    args:
+      FEEDBIN_REF: ${FEEDBIN_REF:-master}
+  image: feedbin-local:latest
+  hostname: feedbin
+  restart: unless-stopped
+  environment: *feedbin-env
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    elasticsearch:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+
+services:
+  web:
+    <<: *feedbin-service
+    command: ["web"]
+    # Loopback-only port for local debugging; Cloudflare Tunnel reaches the
+    # container directly over the compose network, no published port needed.
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  workers:
+    <<: *feedbin-service
+    command: ["workers"]
+    environment:
+      <<: *feedbin-env
+      DB_POOL: "15"
+    depends_on:
+      web:
+        condition: service_healthy
+
+  clock:
+    <<: *feedbin-service
+    command: ["clock"]
+    depends_on:
+      web:
+        condition: service_healthy
+
+  extract:
+    build:
+      context: ./extract
+      args:
+        EXTRACT_REF: ${EXTRACT_REF:-master}
+    image: feedbin-extract-local:latest
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      EXTRACT_USER: ${EXTRACT_USER:-feedbin}
+      EXTRACT_SECRET: ${EXTRACT_SECRET:-}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:3000/health_check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  camo:
+    image: ghcr.io/cactus/go-camo:latest
+    restart: unless-stopped
+    environment:
+      GOCAMO_HMAC: ${CAMO_KEY:-}
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: feedbin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: feedbin
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U feedbin -d feedbin"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-feedbin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # One-shot job: create the bucket and allow anonymous reads (so proxied
+  # image/favicon URLs work if you expose MinIO through the tunnel).
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "${MINIO_ROOT_USER:-feedbin}" "${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing local/feedbin &&
+        mc anonymous set download local/feedbin
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  elasticsearch-data:
+  minio-data:
