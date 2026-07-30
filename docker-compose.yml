@@ -30,7 +30,16 @@ x-feedbin-env: &feedbin-env
   AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
   AWS_S3_BUCKET: feedbin
   AWS_S3_REGION: us-east-1
-  AWS_S3_ENDPOINT: http://minio:9000
+  # Feedbin's image/favicon upload jobs hardcode "https://<host>/<path>" for
+  # the URLs they save (no port, no scheme from this value) when
+  # RAILS_ENV=production - see app/jobs/image_crawler/pipeline/upload.rb and
+  # app/jobs/favicon_crawler/processor.rb. That means whatever host is here
+  # must itself be reachable over HTTPS on 443, or saved image/favicon URLs
+  # are dead on arrival to a browser. The default (internal-only "minio")
+  # only works for the S3 *connection*, not for the URLs Feedbin builds from
+  # it. To make images work, add a public tunnel hostname for minio (see
+  # README) and set AWS_S3_ENDPOINT in .env to that public https:// URL.
+  AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-http://minio:9000}
   AWS_S3_PATH_STYLE: "true"
   # Image proxy (go-camo, camo-compatible). Needs its own public hostname
   # routed through the tunnel. Leave CAMO_HOST empty to disable proxying.
