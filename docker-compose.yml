@@ -26,6 +26,11 @@ x-feedbin-env: &feedbin-env
   # `compose up` time from the single canonical FEEDBIN_HOST, so appending to
   # the in-container FEEDBIN_HOST later doesn't affect them.
   FEEDBIN_API_HOST: ${FEEDBIN_API_HOST:-}
+  # Rails' subdomain-gated API routes (config.action_dispatch.tld_length,
+  # see .env.example) need this bumped from Feedbin's default of 1 whenever
+  # FEEDBIN_HOST has more than 2 labels - which it does here whenever it's a
+  # subdomain of your own domain, e.g. feedbin.example.com.
+  TLD_LENGTH: ${TLD_LENGTH:-1}
   FEEDBIN_URL: https://${FEEDBIN_HOST}
   DEFAULT_URL_OPTIONS_HOST: ${FEEDBIN_HOST}
   PUSH_URL: https://${FEEDBIN_HOST}
