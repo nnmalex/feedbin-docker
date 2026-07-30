@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libyaml-dev \
       nodejs \
       pkg-config \
+      postgresql-client \
       shared-mime-info \
       tzdata \
       zlib1g-dev \

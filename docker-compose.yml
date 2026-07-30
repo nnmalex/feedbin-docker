@@ -100,6 +100,13 @@ services:
     image: feedbin-extract-local:latest
     restart: unless-stopped
     environment:
+      # Upstream's NODE_ENV=production (baked into the image) makes the app
+      # listen on a Unix socket instead of PORT, meant for a bare-metal
+      # deploy sitting behind its own reverse proxy. Other containers reach
+      # this one over the compose network at extract:3000, so force
+      # non-production listening (TCP/PORT); auth (EXTRACT_USER/SECRET
+      # below) isn't gated on NODE_ENV, so real credentials still apply.
+      NODE_ENV: "docker"
       PORT: "3000"
       EXTRACT_USER: ${EXTRACT_USER:-feedbin}
       EXTRACT_SECRET: ${EXTRACT_SECRET:-}
