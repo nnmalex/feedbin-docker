@@ -3,7 +3,8 @@
 
 FROM node:26-slim
 
-ARG EXTRACT_REF=master
+# HEAD = the repo's default branch; also accepts a SHA, tag, or branch name.
+ARG EXTRACT_REF=HEAD
 
 ENV NODE_ENV=production \
     PORT=3000
@@ -17,7 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 RUN git clone https://github.com/feedbin/extract.git /app \
-    && git -C /app checkout --detach "$EXTRACT_REF" \
+    && { git -C /app checkout --detach "$EXTRACT_REF" \
+         || git -C /app checkout --detach "origin/$EXTRACT_REF"; } \
     && rm -rf /app/.git
 
 RUN npm ci --omit=dev

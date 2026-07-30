@@ -3,7 +3,8 @@
 
 FROM ruby:4.0.4-slim
 
-ARG FEEDBIN_REF=master
+# HEAD = the repo's default branch; also accepts a SHA, tag, or branch name.
+ARG FEEDBIN_REF=HEAD
 
 ENV RAILS_ENV=production \
     RACK_ENV=production \
@@ -33,7 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 RUN git clone https://github.com/feedbin/feedbin.git /app \
-    && git -C /app checkout --detach "$FEEDBIN_REF" \
+    && { git -C /app checkout --detach "$FEEDBIN_REF" \
+         || git -C /app checkout --detach "origin/$FEEDBIN_REF"; } \
     && rm -rf /app/.git
 
 RUN bundle install

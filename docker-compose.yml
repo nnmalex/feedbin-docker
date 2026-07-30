@@ -45,7 +45,7 @@ x-feedbin-service: &feedbin-service
   build:
     context: ./feedbin
     args:
-      FEEDBIN_REF: ${FEEDBIN_REF:-master}
+      FEEDBIN_REF: ${FEEDBIN_REF:-HEAD}
   image: feedbin-local:latest
   hostname: feedbin
   restart: unless-stopped
@@ -96,7 +96,7 @@ services:
     build:
       context: ./extract
       args:
-        EXTRACT_REF: ${EXTRACT_REF:-master}
+        EXTRACT_REF: ${EXTRACT_REF:-HEAD}
     image: feedbin-extract-local:latest
     restart: unless-stopped
     environment:
