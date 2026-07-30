@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       git \
       libcurl4-openssl-dev \
       libffi-dev \
+      libidn11-dev \
       libpq-dev \
       libssl-dev \
       libvips-dev \
