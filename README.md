@@ -104,7 +104,7 @@ Elasticsearch content can be rebuilt from Postgres; Redis holds queues and cache
   3. `docker compose up -d` to pick up the new value.
 
   Note this also means internal S3 traffic (image/favicon uploads, existence checks) round-trips out through Cloudflare and back rather than staying on the compose network — Feedbin gives no way to use a different host for the live connection vs. the saved URL. Also note this only fixes images/favicons crawled *after* the change: already-crawled ones have the broken `https://minio/...` URL saved in Postgres (`images.storage_url` / `remote_files`) and won't self-heal without re-crawling.
-- **Image proxy.** `go-camo` is URL-compatible with the original camo protocol Feedbin expects (`CAMO_HOST`/`CAMO_KEY`). It needs a public hostname through the tunnel since browsers fetch proxied images directly.
+- **Image proxy.** `go-camo` is URL-compatible with the original camo protocol Feedbin expects (`CAMO_HOST`/`CAMO_KEY`). It needs a public hostname through the tunnel since browsers fetch proxied images directly. `CAMO_HOST` **must include the scheme** (`https://camo.example.com`, not just `camo.example.com`): Feedbin's `CamoFilter` pastes it directly into `<img src>` with no scheme check, so a bare hostname is parsed by the browser as a path relative to `FEEDBIN_HOST` — you'll see broken images pointing at `https://feedbin.example.com/camo.example.com/...` instead of the proxy.
 - **Extract stays internal.** Feedbin reaches it at `extract:3000` with an HMAC-signed URL; it doesn't need to be public.
 
 ## Troubleshooting

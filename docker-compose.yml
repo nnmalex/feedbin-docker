@@ -43,6 +43,10 @@ x-feedbin-env: &feedbin-env
   AWS_S3_PATH_STYLE: "true"
   # Image proxy (go-camo, camo-compatible). Needs its own public hostname
   # routed through the tunnel. Leave CAMO_HOST empty to disable proxying.
+  # Must include the scheme (https://camo.example.com) - Feedbin's
+  # CamoFilter pastes this directly into <img src> with no scheme check,
+  # so a bare hostname resolves in the browser as a path relative to
+  # FEEDBIN_HOST instead of an absolute URL.
   CAMO_HOST: ${CAMO_HOST:-}
   CAMO_KEY: ${CAMO_KEY:-}
   # Full-content extraction service (internal only).
