@@ -43,6 +43,8 @@ Fill in `.env` — each secret has a generation command in the comments (`openss
    | `files.example.com` | `http://minio:9000` (required — entry images/favicons) |
    | `camo.example.com` | `http://camo:8080` (if using the image proxy) |
 
+   If you add the `api.*` hostname, also set `FEEDBIN_API_HOST=api.feedbin.example.com` in `.env` — without it, Rails' `HostAuthorization` middleware rejects requests with that Host header (`Blocked hosts: api.feedbin.example.com` in `web` logs) even though the tunnel routes them correctly.
+
 Because TLS is handled by Cloudflare, no certificates are needed anywhere in this stack. `FORCE_SSL=true` stays enabled: cloudflared forwards `X-Forwarded-Proto: https`, so Rails knows requests are secure and won't redirect-loop.
 
 ### 3. Build and start
@@ -107,6 +109,7 @@ Elasticsearch content can be rebuilt from Postgres; Redis holds queues and cache
   Note this also means internal S3 traffic (image/favicon uploads, existence checks) round-trips out through Cloudflare and back rather than staying on the compose network — Feedbin gives no way to use a different host for the live connection vs. the saved URL. Also note this only fixes images/favicons crawled *after* the change: already-crawled ones have the broken `https://minio/...` URL saved in Postgres (`images.storage_url` / `remote_files`) and won't self-heal without re-crawling.
 - **Image proxy.** `go-camo` is URL-compatible with the original camo protocol Feedbin expects (`CAMO_HOST`/`CAMO_KEY`). It needs a public hostname through the tunnel since browsers fetch proxied images directly. `CAMO_HOST` **must include the scheme** (`https://camo.example.com`, not just `camo.example.com`): Feedbin's `CamoFilter` pastes it directly into `<img src>` with no scheme check, so a bare hostname is parsed by the browser as a path relative to `FEEDBIN_HOST` — you'll see broken images pointing at `https://feedbin.example.com/camo.example.com/...` instead of the proxy.
 - **Extract stays internal.** Feedbin reaches it at `extract:3000` with an HMAC-signed URL; it doesn't need to be public.
+- **`FEEDBIN_API_HOST` for a second public hostname.** Rails reads `ENV["FEEDBIN_HOST"]` as a comma-separated allow-list for its `HostAuthorization` middleware (`config.hosts` in `config/environments/production.rb`), but `FEEDBIN_HOST` must also stay a single hostname at the compose level since `FEEDBIN_URL`, `DEFAULT_URL_OPTIONS_HOST`, and `PUSH_URL` are all built from it. To reconcile the two, `feedbin/docker-entrypoint.sh` appends `FEEDBIN_API_HOST` (if set) onto `FEEDBIN_HOST` at container start, after those other vars are already resolved by Compose — so Rails accepts both hostnames while URL generation still only ever uses the canonical one.
 
 ## Troubleshooting
 

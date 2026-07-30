@@ -19,6 +19,13 @@ x-feedbin-env: &feedbin-env
   # Public identity. TLS terminates at Cloudflare's edge; cloudflared forwards
   # X-Forwarded-Proto so FORCE_SSL is safe to keep on.
   FEEDBIN_HOST: ${FEEDBIN_HOST:?Set FEEDBIN_HOST in .env}
+  # Optional extra host Rails should also accept (e.g. an api.* hostname for
+  # API clients - see README). docker-entrypoint.sh folds this into the
+  # FEEDBIN_HOST value actually seen by Rails' config.hosts before boot;
+  # FEEDBIN_URL/DEFAULT_URL_OPTIONS_HOST/PUSH_URL below are resolved here at
+  # `compose up` time from the single canonical FEEDBIN_HOST, so appending to
+  # the in-container FEEDBIN_HOST later doesn't affect them.
+  FEEDBIN_API_HOST: ${FEEDBIN_API_HOST:-}
   FEEDBIN_URL: https://${FEEDBIN_HOST}
   DEFAULT_URL_OPTIONS_HOST: ${FEEDBIN_HOST}
   PUSH_URL: https://${FEEDBIN_HOST}

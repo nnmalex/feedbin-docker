@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 
+# Rails' HostAuthorization (config.hosts, config/environments/production.rb)
+# reads ENV["FEEDBIN_HOST"] as a comma-separated allow-list. FEEDBIN_HOST
+# itself must stay a single hostname at the compose level (FEEDBIN_URL,
+# DEFAULT_URL_OPTIONS_HOST, and PUSH_URL are built from it), so an optional
+# extra hostname (e.g. an api.* host for API clients) is appended here,
+# after those other vars are already fixed, rather than in docker-compose.yml.
+if [ -n "$FEEDBIN_API_HOST" ]; then
+  export FEEDBIN_HOST="$FEEDBIN_HOST,$FEEDBIN_API_HOST"
+fi
+
 case "$1" in
   web)
     # Idempotent: creates + loads schema on first run, migrates afterwards.
