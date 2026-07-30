@@ -69,7 +69,10 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/"]
+      # config.hosts is locked to FEEDBIN_HOST (config/environments/production.rb),
+      # so the request needs a matching Host header or Rails' HostAuthorization
+      # middleware blocks it (logged as "Blocked hosts: 127.0.0.1:8080").
+      test: ["CMD-SHELL", "curl -fsS -H \"Host: $FEEDBIN_HOST\" -o /dev/null http://127.0.0.1:8080/"]
       interval: 30s
       timeout: 10s
       retries: 5
