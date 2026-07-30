@@ -40,6 +40,7 @@ Fill in `.env` — each secret has a generation command in the comments (`openss
    |---|---|
    | `feedbin.example.com` | `http://web:8080` |
    | `api.feedbin.example.com` | `http://web:8080` (optional, for API clients) |
+   | `files.example.com` | `http://minio:9000` (required — entry images/favicons) |
    | `camo.example.com` | `http://camo:8080` (if using the image proxy) |
 
 Because TLS is handled by Cloudflare, no certificates are needed anywhere in this stack. `FORCE_SSL=true` stays enabled: cloudflared forwards `X-Forwarded-Proto: https`, so Rails knows requests are secure and won't redirect-loop.
