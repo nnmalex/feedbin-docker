@@ -62,19 +62,17 @@ docker compose logs -f web workers
 
 ### 4. Create your user
 
-Feedbin has no open self-serve signup without Stripe configured. Create your account from the console:
+Feedbin has no open self-serve signup without Stripe configured. Provision your account with:
 
 ```sh
-docker compose exec web bin/rails console
+scripts/create-user.sh you@example.com your-password --admin
 ```
 
-```ruby
-User.create!(email: "you@example.com", password: "your-password", password_confirmation: "your-password")
-```
-
-If a validation complains about a missing plan, assign one explicitly: `User.create!(email: ..., password: ..., password_confirmation: ..., plan: Plan.first)`.
+This seeds the `Plans` table if it's empty (needed once per fresh volume — see below) and creates the user on the `free` plan with no expiration — not `trial`, which has a 30-day `expires_at` that a periodic Sidekiq job (`TrialExpiration`, enqueued by `clock`) enforces by setting `suspended: true`. A suspended user gets locked out of the web UI on every login with no way to pay, since Stripe isn't configured. `free` has no expiry and that job never touches it. Safe to re-run: if the email already exists it repairs a nil/`trial` plan or a stuck `suspended` flag instead of erroring.
 
 Then log in at `https://feedbin.example.com`.
+
+> If you signed up through the web UI before running this and got a blank page after login, that's a `nil` plan from Plans not being seeded yet — `scripts/create-user.sh <same email> <anything>` will fix it in place (the password argument is ignored for existing users).
 
 ## Operations
 
@@ -110,3 +108,5 @@ Elasticsearch content can be rebuilt from Postgres; Redis holds queues and cache
 - **Feeds not updating** — check `clock` (enqueues the refresh schedule) and `workers` logs.
 - **Elasticsearch exits with code 137** — it's being OOM-killed; raise Docker's memory or lower `ES_JAVA_OPTS`.
 - **Upstream changes** — Feedbin's maintainer explicitly warns that self-hosting takes real configuration effort, and master moves without release tags. If a build breaks, pin `FEEDBIN_REF` to a known-good commit.
+- **Blank page after login, `NoMethodError: undefined method 'restricted?' for nil` in `web` logs** — the user's `plan_id` is nil. `db:prepare` only runs `db:seed` on the run that creates the database from scratch, so a Postgres volume that already existed from an earlier failed build attempt can end up with an empty `Plans` table, and signup silently assigns no plan. Fix with `scripts/create-user.sh <email> <anything>` (repairs an existing user in place).
+- **Locked out after ~30 days, redirected to a billing page you can't submit** — the account is on the `trial` plan and `TrialExpiration` (a Sidekiq job the `clock` container enqueues periodically) suspended it once `expires_at` passed. Only happens to accounts created before this repo's `scripts/create-user.sh` existed, or ones provisioned outside it. Fix with `scripts/create-user.sh <email> <anything>` — it moves the account to `free`, clears `expires_at`, and un-suspends it.
