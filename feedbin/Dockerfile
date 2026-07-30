@@ -23,12 +23,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libcurl4-openssl-dev \
       libffi-dev \
       libpq-dev \
+      libssl-dev \
       libvips-dev \
       libyaml-dev \
       nodejs \
       pkg-config \
       shared-mime-info \
       tzdata \
+      zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
